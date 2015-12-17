@@ -1,6 +1,5 @@
 import java.io.PushbackInputStream
-
-import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * Created by john on 15/12/15.
@@ -11,6 +10,8 @@ trait Value
 case class Fixnum(v: Integer) extends Value
 case object True extends Value
 case object False extends Value
+case class CharacterLit(v: Char) extends Value
+case class StringLit(v: String) extends Value
 
 object VM {
   val delims = "();\"".toSet
@@ -38,6 +39,41 @@ object VM {
     c
   }
 
+  def eatExpectedString(stream: PushbackInputStream, str: String): Unit = {
+    for (c <- str) {
+      if (c != stream.read()) {
+        throw new RuntimeException(s"unexpected character '$c'")
+      }
+    }
+  }
+
+  def peekExpectedDelimiter(stream: PushbackInputStream): Unit = {
+    if (!isDelimiter(peek(stream).toChar)) {
+      throw new RuntimeException("character not followed by delimiter")
+    }
+  }
+
+  def readCharacter(stream: PushbackInputStream): CharacterLit = {
+    val c = stream.read()
+    if (c == -1) {
+      throw new RuntimeException("incomplete character literal")
+    } else if (c == 's') {
+      if (peek(stream) == 'p') {
+        eatExpectedString(stream, "pace")
+        peekExpectedDelimiter(stream)
+        return new CharacterLit(' ')
+      }
+    } else if (c == 'n') {
+      if (peek(stream) == 'e') {
+        eatExpectedString(stream, "ewline")
+        peekExpectedDelimiter(stream)
+        return new CharacterLit('\n')
+      }
+    }
+    peekExpectedDelimiter(stream)
+    return new CharacterLit(c.toChar)
+  }
+
   def read(stream: PushbackInputStream) = {
     eatWhitespace(stream)
 
@@ -50,8 +86,10 @@ object VM {
         True
       } else if (c == 'f') {
         False
+      } else if (c == '\\') {
+        readCharacter(stream)
       } else {
-        throw new RuntimeException(s"unknown boolean literal '${c.toChar}'")
+        throw new RuntimeException(s"unknown boolean or character literal '${c.toChar}'")
       }
     } else if (Character.isDigit(c) || (c == '-' && Character.isDigit(peek(stream)))) {
       if (c == '-') {
@@ -59,7 +97,9 @@ object VM {
       } else {
         stream.unread(c)
       }
-      while ({c = stream.read(); c != -1 && Character.isDigit(c)}) {
+      while ( {
+        c = stream.read(); c != -1 && Character.isDigit(c)
+      }) {
         num = num * 10 + c - '0'
       }
       num *= sign
@@ -69,6 +109,21 @@ object VM {
       } else {
         throw new RuntimeException("number not followed by delimiter")
       }
+    } else if (c == '"') {
+      var literal = ArrayBuffer[Char]()
+      while ({c = stream.read(); c != '"'}) {
+        if (c == '\\') {
+          c = stream.read()
+          if (c == 'n') {
+            c = '\n'
+          }
+        }
+        if (c == -1) {
+          throw new RuntimeException("non-terminated string literal")
+        }
+        literal.append(c.toChar)
+      }
+      new StringLit(literal.mkString)
     } else {
       throw new RuntimeException(s"bad input. unexpected '$c'")
     }
@@ -76,15 +131,44 @@ object VM {
 
   def eval(v: Value) = v
 
+  def writeCharacter(c: Char): Unit = {
+    print("#\\")
+    if (c == '\n') {
+      print("newline")
+    } else if (c == ' ') {
+      print("space")
+    } else {
+      print(c)
+    }
+  }
+
+  def writeString(s: String): Unit = {
+    print("\"")
+    for (c <- s) {
+      if (c == '\n') {
+        print("\\n")
+      } else if (c == '\\') {
+        print("\\\\")
+      } else if (c == "\"") {
+        print("\\\"")
+      } else {
+        print(c)
+      }
+    }
+    print("\"")
+  }
+
   def write(v: Value) = v match {
     case Fixnum(v) => print(v)
     case True => print("#t")
     case False => print("#f")
+    case CharacterLit(c) => writeCharacter(c)
+    case StringLit(s) => writeString(s)
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.2. Use ctlr-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.4. Use ctlr-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))
