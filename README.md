@@ -4,5 +4,6 @@
 
 ### changes
 
+* v0.2 Support for the boolean values `#t` and `#f`
 * v0.1 The reader can handle integers
 

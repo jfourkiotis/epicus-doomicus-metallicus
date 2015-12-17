@@ -9,6 +9,8 @@ import scala.annotation.tailrec
 trait Value
 
 case class Fixnum(v: Integer) extends Value
+case object True extends Value
+case object False extends Value
 
 object VM {
   val delims = "();\"".toSet
@@ -42,7 +44,16 @@ object VM {
     var c = stream.read()
     var sign = 1
     var num = 0
-    if (Character.isDigit(c) || (c == '-' && Character.isDigit(peek(stream)))) {
+    if (c == '#') {
+      c = stream.read()
+      if (c == 't') {
+        True
+      } else if (c == 'f') {
+        False
+      } else {
+        throw new RuntimeException(s"unknown boolean literal '${c.toChar}'")
+      }
+    } else if (Character.isDigit(c) || (c == '-' && Character.isDigit(peek(stream)))) {
       if (c == '-') {
         sign = -1
       } else {
@@ -67,11 +78,13 @@ object VM {
 
   def write(v: Value) = v match {
     case Fixnum(v) => print(v)
+    case True => print("#t")
+    case False => print("#f")
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.1. Use ctlr-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.2. Use ctlr-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))
