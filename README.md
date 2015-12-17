@@ -4,3 +4,5 @@
 
 ### changes
 
+* v0.1 The reader can handle integers
+
