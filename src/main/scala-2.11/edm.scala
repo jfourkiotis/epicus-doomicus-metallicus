@@ -12,6 +12,7 @@ trait Value
 case class Fixnum(v: Integer) extends Value
 case object True extends Value
 case object False extends Value
+case object Empty extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
 
@@ -129,7 +130,9 @@ object VM {
       }
     } else if (c == '"') {
       var literal = ArrayBuffer[Char]()
-      while ({c = stream.read(); c != '"'}) {
+      while ( {
+        c = stream.read(); c != '"'
+      }) {
         if (c == '\\') {
           c = stream.read()
           if (c == 'n') {
@@ -142,6 +145,14 @@ object VM {
         literal.append(c.toChar)
       }
       StringLit.mkLiteral(literal.mkString)
+    } else if (c == '(') { /* read the empty list */
+      eatWhitespace(stream)
+      c = stream.read()
+      if (c == ')') {
+        Empty
+      } else {
+        throw new RuntimeException(s"unexpected character '${c.toChar}'. expected ')'")
+      }
     } else {
       throw new RuntimeException(s"bad input. unexpected '$c'")
     }
@@ -180,13 +191,14 @@ object VM {
     case Fixnum(v) => print(v)
     case True => print("#t")
     case False => print("#f")
+    case Empty => print("()")
     case CharacterLit(c) => writeCharacter(c)
     case StringLit(s) => writeString(s)
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.4. Use ctlr-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.5. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))
