@@ -1,5 +1,7 @@
 import java.io.PushbackInputStream
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
 
 /**
   * Created by john on 15/12/15.
@@ -12,6 +14,22 @@ case object True extends Value
 case object False extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
+
+class LiteralFactory[T, U](func: T => U) {
+  val literals = new HashMap[T, U]()
+
+  def mkLiteral(v: T) = literals.get(v) match {
+    case Some(x) => x
+    case None => {
+      val newlit = func(v)
+      literals.update(v, newlit)
+      newlit
+    }
+  }
+}
+
+object CharacterLit extends LiteralFactory[Char, CharacterLit]( new CharacterLit(_) )
+object StringLit extends LiteralFactory[String, StringLit] ( new StringLit(_) )
 
 object VM {
   val delims = "();\"".toSet
@@ -61,17 +79,17 @@ object VM {
       if (peek(stream) == 'p') {
         eatExpectedString(stream, "pace")
         peekExpectedDelimiter(stream)
-        return new CharacterLit(' ')
+        return CharacterLit.mkLiteral(' ')
       }
     } else if (c == 'n') {
       if (peek(stream) == 'e') {
         eatExpectedString(stream, "ewline")
         peekExpectedDelimiter(stream)
-        return new CharacterLit('\n')
+        return CharacterLit.mkLiteral('\n')
       }
     }
     peekExpectedDelimiter(stream)
-    return new CharacterLit(c.toChar)
+    return CharacterLit.mkLiteral(c.toChar)
   }
 
   def read(stream: PushbackInputStream) = {
@@ -123,7 +141,7 @@ object VM {
         }
         literal.append(c.toChar)
       }
-      new StringLit(literal.mkString)
+      StringLit.mkLiteral(literal.mkString)
     } else {
       throw new RuntimeException(s"bad input. unexpected '$c'")
     }
