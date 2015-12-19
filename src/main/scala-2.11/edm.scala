@@ -261,7 +261,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.6. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.7. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))
