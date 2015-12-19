@@ -1,5 +1,4 @@
 import java.io.PushbackInputStream
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 
@@ -15,6 +14,7 @@ case object False extends Value
 case object Empty extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
+case class Pair(first: Value, second: Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
   val literals = new HashMap[T, U]()
@@ -93,6 +93,36 @@ object VM {
     return CharacterLit.mkLiteral(c.toChar)
   }
 
+  def readPair(stream: PushbackInputStream): Value = {
+    eatWhitespace(stream)
+
+    var c = stream.read()
+    if (c == ')') { /* read the empty list */
+      return Empty
+    }
+    stream.unread(c)
+    val first = read(stream)
+    eatWhitespace(stream)
+    c = stream.read()
+    if (c == '.') { /* read the improper list */
+      c = peek(stream)
+      if (!isDelimiter(c.toChar)) {
+        throw new RuntimeException("dot (.) not followed be delimiter")
+      }
+      val second = read(stream)
+      eatWhitespace(stream)
+      c = stream.read()
+      if (c != ')') {
+        throw new RuntimeException("where was the trailing paren?")
+      }
+      return Pair(first, second)
+    } else { /* read list */
+      stream.unread(c)
+      val second = readPair(stream)
+      return Pair(first, second)
+    }
+  }
+
   def read(stream: PushbackInputStream) = {
     eatWhitespace(stream)
 
@@ -145,14 +175,8 @@ object VM {
         literal.append(c.toChar)
       }
       StringLit.mkLiteral(literal.mkString)
-    } else if (c == '(') { /* read the empty list */
-      eatWhitespace(stream)
-      c = stream.read()
-      if (c == ')') {
-        Empty
-      } else {
-        throw new RuntimeException(s"unexpected character '${c.toChar}'. expected ')'")
-      }
+    } else if (c == '(') {
+      readPair(stream) /* read the empty list or pair */
     } else {
       throw new RuntimeException(s"bad input. unexpected '$c'")
     }
@@ -187,6 +211,21 @@ object VM {
     print("\"")
   }
 
+  def writePair(first: Value, second: Value): Unit = {
+    write(first)
+    second match {
+      case Pair(f, s) => {
+        print(" ")
+        writePair(f, s)
+      }
+      case Empty => ; /* do nothing */
+      case _ => {
+        print(" . ")
+        write(second)
+      }
+    }
+  }
+
   def write(v: Value) = v match {
     case Fixnum(v) => print(v)
     case True => print("#t")
@@ -194,11 +233,16 @@ object VM {
     case Empty => print("()")
     case CharacterLit(c) => writeCharacter(c)
     case StringLit(s) => writeString(s)
+    case Pair(first, second) => {
+      print("(")
+      writePair(first, second)
+      print(")")
+    }
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.5. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.6. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))
