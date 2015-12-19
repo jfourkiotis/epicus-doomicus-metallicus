@@ -39,6 +39,8 @@ object VM {
   val initials = "*/><=?!".toSet
   val eof = -1
 
+  val quote = Symbol.mkLiteral("quote")
+
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
   def isInitial(c: Char) = Character.isAlphabetic(c) || initials.contains(c)
@@ -128,7 +130,7 @@ object VM {
     }
   }
 
-  def read(stream: PushbackInputStream) = {
+  def read(stream: PushbackInputStream): Value = {
     eatWhitespace(stream)
 
     var c = stream.read()
@@ -177,7 +179,7 @@ object VM {
         throw new RuntimeException(s"symbol not followed by delimiter. found '${c.toChar}'")
       }
     } else if (c == '"') {
-      var literal = ArrayBuffer[Char]()
+      val literal = ArrayBuffer[Char]()
       while ( {
         c = stream.read(); c != '"'
       }) {
@@ -195,12 +197,62 @@ object VM {
       StringLit.mkLiteral(literal.mkString)
     } else if (c == '(') {
       readPair(stream) /* read the empty list or pair */
+    } else if (c == '\'') {
+      Pair(quote, Pair(read(stream), Empty))
     } else {
-      throw new RuntimeException(s"bad input. unexpected '$c'")
+      throw new RuntimeException(s"bad input. unexpected '${c.toChar}'")
     }
   }
 
-  def eval(v: Value) = v
+  def isSelfEvaluating(v: Value) = v match {
+    case Fixnum(_) | True | False | CharacterLit(_) | StringLit(_) => true
+    case _ => false
+  }
+
+  //def isSymbol(v: Value) = v match {
+  //  case Symbol => true
+  //  case _ => false
+  //}
+
+  def car(v: Value) = v match {
+    case Pair(first, _) => first
+    case _ => throw new ClassCastException()
+  }
+  def cdr(v: Value) = v match {
+    case Pair(_, second) => second
+    case _ => throw new ClassCastException
+  }
+  def cadr(v: Value) = car(cdr(v))
+  def cddr(v: Value) = cdr(cdr(v))
+  def caddr(v: Value) = car(cddr(v))
+
+  def isTagged(expression: Value, tag: Value) = expression match {
+    case Pair(first, _) => first == tag
+    case _ => false
+  }
+
+  def isQuoted(expression: Value) = isTagged(expression, quote)
+
+  /**
+    *
+    * {{{
+    *   > (quote (1 . 2))
+    *   (1 . 2)
+    * }}}
+    * @param expression is a quoted form
+    * @return the quoted value
+    */
+  def quotationText(expression: Value) = cadr(expression)
+
+  def eval(v: Value) = {
+    if (isSelfEvaluating(v)) {
+      v
+    } else if (isQuoted(v)) {
+      quotationText(v)
+    } else {
+      throw new RuntimeException("cannot eval unknown expression type")
+    }
+  }
 
   def writeCharacter(c: Char): Unit = {
     print("#\\")
@@ -261,7 +313,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.7. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.8. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in))))

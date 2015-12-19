@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.8 Added quoted expressions
 * v0.7 Symbols
 * v0.6 Support for lists and pairs
 * v0.5 Implemented the empty list `()`
