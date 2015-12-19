@@ -14,6 +14,7 @@ case object False extends Value
 case object Empty extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
+case class Symbol(v: String) extends Value
 case class Pair(first: Value, second: Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
@@ -31,12 +32,16 @@ class LiteralFactory[T, U](func: T => U) {
 
 object CharacterLit extends LiteralFactory[Char, CharacterLit]( new CharacterLit(_) )
 object StringLit extends LiteralFactory[String, StringLit] ( new StringLit(_) )
+object Symbol extends LiteralFactory[String, Symbol] ( new Symbol(_) )
 
 object VM {
   val delims = "();\"".toSet
+  val initials = "*/><=?!".toSet
   val eof = -1
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
+
+  def isInitial(c: Char) = Character.isAlphabetic(c) || initials.contains(c)
 
   def eatWhitespace(stream: PushbackInputStream): Unit = {
     var c = 0
@@ -147,7 +152,8 @@ object VM {
         stream.unread(c)
       }
       while ( {
-        c = stream.read(); c != -1 && Character.isDigit(c)
+        c = stream.read();
+        c != -1 && Character.isDigit(c)
       }) {
         num = num * 10 + c - '0'
       }
@@ -157,6 +163,18 @@ object VM {
         new Fixnum(num)
       } else {
         throw new RuntimeException("number not followed by delimiter")
+      }
+    } else if (isInitial(c.toChar) || ((c == '+' || c == '-') && isDelimiter(peek(stream).toChar))) {
+      val buffer = ArrayBuffer[Char]()
+      while (isInitial(c.toChar) || Character.isDigit(c) || c == '+' || c =='-') {
+        buffer += c.toChar
+        c = stream.read()
+      }
+      if (isDelimiter(c.toChar)) {
+        stream.unread(c)
+        Symbol.mkLiteral(buffer.mkString)
+      } else {
+        throw new RuntimeException(s"symbol not followed by delimiter. found '${c.toChar}'")
       }
     } else if (c == '"') {
       var literal = ArrayBuffer[Char]()
@@ -233,6 +251,7 @@ object VM {
     case Empty => print("()")
     case CharacterLit(c) => writeCharacter(c)
     case StringLit(s) => writeString(s)
+    case Symbol(s) => print(s)
     case Pair(first, second) => {
       print("(")
       writePair(first, second)
