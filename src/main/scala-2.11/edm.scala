@@ -1,6 +1,6 @@
 import java.io.PushbackInputStream
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable.HashMap
 
 /**
   * Created by john on 15/12/15.
@@ -18,7 +18,7 @@ case class Symbol(v: String) extends Value
 case class Pair(first: Value, second: Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
-  val literals = new HashMap[T, U]()
+  val literals = new mutable.HashMap[T, U]()
 
   def mkLiteral(v: T) = literals.get(v) match {
     case Some(x) => x
@@ -154,7 +154,7 @@ object VM {
         stream.unread(c)
       }
       while ( {
-        c = stream.read();
+        c = stream.read()
         c != -1 && Character.isDigit(c)
       }) {
         num = num * 10 + c - '0'
@@ -304,11 +304,10 @@ object VM {
     case CharacterLit(c) => writeCharacter(c)
     case StringLit(s) => writeString(s)
     case Symbol(s) => print(s)
-    case Pair(first, second) => {
+    case Pair(first, second) =>
       print("(")
       writePair(first, second)
       print(")")
-    }
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
