@@ -1,4 +1,5 @@
 import java.io.PushbackInputStream
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -39,10 +40,11 @@ object VM {
   val initials = "*/><=?!".toSet
   val eof = -1
 
-  val quote  = Symbol.mkLiteral("quote")
-  val define = Symbol.mkLiteral("define")
-  val set    = Symbol.mkLiteral("set!")
-  val ok     = Symbol.mkLiteral("ok")
+  val QUOTE  = Symbol.mkLiteral("quote")
+  val DEFINE = Symbol.mkLiteral("define")
+  val SET    = Symbol.mkLiteral("set!")
+  val OK     = Symbol.mkLiteral("ok")
+  val IF     = Symbol.mkLiteral("if")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -201,7 +203,7 @@ object VM {
     } else if (c == '(') {
       readPair(stream) /* read the empty list or pair */
     } else if (c == '\'') {
-      Pair(quote, Pair(read(stream), Empty))
+      Pair(QUOTE, Pair(read(stream), Empty))
     } else {
       throw new RuntimeException(s"bad input. unexpected '${c.toChar}'")
     }
@@ -234,7 +236,7 @@ object VM {
     case _ => false
   }
 
-  def isQuoted(expression: Value) = isTagged(expression, quote)
+  def isQuoted(expression: Value) = isTagged(expression, QUOTE)
 
   /**
     *
@@ -332,7 +334,7 @@ object VM {
     throw new RuntimeException("unbound variable")
   }
 
-  def isAssignment(form: Value) = isTagged(form, set)
+  def isAssignment(form: Value) = isTagged(form, SET)
   def assignmentVariable(form: Value) = cadr(form)
   def assignmentValue(form: Value) = caddr(form)
   /**
@@ -351,23 +353,42 @@ object VM {
     * @param form the definition form
     * @return the cadr of the definition form
     */
-  def isDefinition(form: Value) = isTagged(form, define)
+  def isDefinition(form: Value) = isTagged(form, DEFINE)
   def definitionVariable(form: Value) = cadr(form)
   def definitionValue(form: Value) = caddr(form)
 
   def evalAssignment(form: Value, env: Value): Value = {
     setVariableValue(assignmentVariable(form), eval(assignmentValue(form), env), env)
-    ok
+    OK
   }
 
   def evalDefinition(form: Value, env: Value): Value = {
     defineVariable(definitionVariable(form), eval(definitionValue(form), env), env)
-    ok
+    OK
   }
 
   def isVariable(v: Value) = isSymbol(v)
 
-  def eval(v: Value, env: Value) = {
+  /**
+    * An `if` form has the following structure:
+    *
+    * (if . +
+    *       |
+    * (pred . +
+    *         |
+    *   (cons . +
+    *           |
+    *      (alt . nil)
+    *
+    * @param form the form given
+    * @return true if the form is an `if` form.
+    */
+  def isIf(form: Value) = isTagged(form, IF)
+  def ifPredicate(form: Value) = cadr(form)
+  def ifConsequent(form: Value) = caddr(form)
+  def ifAlternate(form: Value) = car(cdr(cddr(form)))
+
+  def eval(v: Value, env: Value): Value = {
     if (isSelfEvaluating(v)) {
       v
     } else if (isVariable(v)) {
@@ -378,6 +399,9 @@ object VM {
       evalAssignment(v, env)
     } else if (isDefinition(v)) {
       evalDefinition(v, env)
+    } else if (isIf(v)) {
+      val branch = if (eval(ifPredicate(v), env) == True) ifConsequent(v) else ifAlternate(v)
+      eval(branch, env)
     } else {
       throw new RuntimeException("cannot eval unknown expression type")
     }
