@@ -1,5 +1,4 @@
 import java.io.PushbackInputStream
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -23,11 +22,10 @@ class LiteralFactory[T, U](func: T => U) {
 
   def mkLiteral(v: T) = literals.get(v) match {
     case Some(x) => x
-    case None => {
+    case None =>
       val newlit = func(v)
       literals.update(v, newlit)
       newlit
-    }
   }
 }
 
@@ -425,7 +423,7 @@ object VM {
         print("\\n")
       } else if (c == '\\') {
         print("\\\\")
-      } else if (c == "\"") {
+      } else if (c == '\"') {
         print("\\\"")
       } else {
         print(c)
@@ -437,20 +435,18 @@ object VM {
   def writePair(first: Value, second: Value): Unit = {
     write(first)
     second match {
-      case Pair(f, s) => {
+      case Pair(f, s) =>
         print(" ")
         writePair(f, s)
-      }
       case Empty => ; /* do nothing */
-      case _ => {
+      case _ =>
         print(" . ")
         write(second)
-      }
     }
   }
 
   def write(v: Value) = v match {
-    case Fixnum(v) => print(v)
+    case Fixnum(n) => print(n)
     case True => print("#t")
     case False => print("#f")
     case Empty => print("()")
