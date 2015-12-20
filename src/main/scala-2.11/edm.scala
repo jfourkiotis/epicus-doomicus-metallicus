@@ -15,7 +15,7 @@ case object Empty extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
 case class Symbol(v: String) extends Value
-case class Pair(first: Value, second: Value) extends Value
+case class Pair(var first: Value, var second: Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
   val literals = new mutable.HashMap[T, U]()
@@ -39,7 +39,10 @@ object VM {
   val initials = "*/><=?!".toSet
   val eof = -1
 
-  val quote = Symbol.mkLiteral("quote")
+  val quote  = Symbol.mkLiteral("quote")
+  val define = Symbol.mkLiteral("define")
+  val set    = Symbol.mkLiteral("set!")
+  val ok     = Symbol.mkLiteral("ok")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -209,10 +212,10 @@ object VM {
     case _ => false
   }
 
-  //def isSymbol(v: Value) = v match {
-  //  case Symbol => true
-  //  case _ => false
-  //}
+  def isSymbol(v: Value) = v match {
+    case Symbol(_) => true
+    case _ => false
+  }
 
   def car(v: Value) = v match {
     case Pair(first, _) => first
@@ -244,11 +247,137 @@ object VM {
     */
   def quotationText(expression: Value) = cadr(expression)
 
-  def eval(v: Value) = {
+
+  val empty_env = Empty
+  val global_env = setupEnvironment()
+
+  /**
+    * A frame is a Pair of two lists- a list of variables and a list of values
+    * @param variables the variable names of the frame
+    * @param values the values of the variables
+    * @return an environment frame
+    */
+  def mkFrame(variables: Value, values: Value) = Pair(variables, values)
+  def frameVariables(frame: Value) = car(frame)
+  def frameValues(frame: Value) = cdr(frame)
+  def addBindingToFrame(variable: Value, value: Value, frame: Value): Unit = {
+    val p = frame.asInstanceOf[Pair]
+    p.first = Pair(variable, p.first)
+    p.second= Pair(value, p.second)
+  }
+
+  /**
+    * Creates a new environment by extending a given environment
+    * An environment is a Pair(frame, base_env)
+    * @param vars the variables of the new environment
+    * @param vals the variable values of the new environment
+    * @param base_env the parent environment
+    * @return a new environment
+    */
+  def extendEnvironment(vars: Value, vals: Value, base_env: Value) = Pair(mkFrame(vars, vals), base_env)
+  def setupEnvironment() = extendEnvironment(Empty, Empty, empty_env)
+  def firstFrame(env: Value) = car(env)
+  def enclosingEnvironment(env: Value) = cdr(env)
+
+  def lookupVariableValue(variable: Value, env: Value): Value = {
+    var current_env = env
+    while (current_env != Empty) {
+      val frame = firstFrame(current_env)
+      var variables = frameVariables(frame)
+      var values = frameValues(frame)
+      while (variables != Empty) {
+        if (variable == car(variables)) return car(values)
+        variables = cdr(variables)
+        values = cdr(values)
+      }
+      current_env = enclosingEnvironment(current_env)
+    }
+    throw new RuntimeException("unbound variable")
+  }
+
+  def defineVariable(variable: Value, value: Value, env: Value): Unit = {
+    val frame = firstFrame(env)
+    var variables = frameVariables(frame)
+    var values = frameValues(frame)
+
+    while (variables != Empty) {
+      if (variable == car(variables)) {
+        val p = values.asInstanceOf[Pair]
+        p.first = value
+        return
+      }
+      variables = cdr(variables)
+      values = cdr(values)
+    }
+    addBindingToFrame(variable, value, frame)
+  }
+
+  def setVariableValue(variable: Value, value: Value, env: Value): Unit = {
+    var current_env = env
+    while (env != Empty) {
+      val frame = firstFrame(current_env)
+      var variables = frameVariables(frame)
+      var values = frameValues(frame)
+      while (variables != Empty) {
+        if (variable == car(variables)) {
+          val p = values.asInstanceOf[Pair]
+          p.first = value
+          return
+        }
+        variables = cdr(variables)
+        values = cdr(values)
+      }
+      current_env = enclosingEnvironment(env)
+    }
+    throw new RuntimeException("unbound variable")
+  }
+
+  def isAssignment(form: Value) = isTagged(form, set)
+  def assignmentVariable(form: Value) = cadr(form)
+  def assignmentValue(form: Value) = caddr(form)
+  /**
+    * The **define** form has the following structure:
+    *
+    *  (define . +
+    *            |
+    *       (var .  +
+    *               |
+    *          (val . nil)
+    * example:
+    * {{{
+    *   > (define x 5)
+    *   ok
+    * }}}
+    * @param form the definition form
+    * @return the cadr of the definition form
+    */
+  def isDefinition(form: Value) = isTagged(form, define)
+  def definitionVariable(form: Value) = cadr(form)
+  def definitionValue(form: Value) = caddr(form)
+
+  def evalAssignment(form: Value, env: Value): Value = {
+    setVariableValue(assignmentVariable(form), eval(assignmentValue(form), env), env)
+    ok
+  }
+
+  def evalDefinition(form: Value, env: Value): Value = {
+    defineVariable(definitionVariable(form), eval(definitionValue(form), env), env)
+    ok
+  }
+
+  def isVariable(v: Value) = isSymbol(v)
+
+  def eval(v: Value, env: Value) = {
     if (isSelfEvaluating(v)) {
       v
+    } else if (isVariable(v)) {
+      lookupVariableValue(v, env)
     } else if (isQuoted(v)) {
       quotationText(v)
+    } else if (isAssignment(v)) {
+      evalAssignment(v, env)
+    } else if (isDefinition(v)) {
+      evalDefinition(v, env)
     } else {
       throw new RuntimeException("cannot eval unknown expression type")
     }
@@ -312,10 +441,10 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.8. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.9. Use ctrl-c to exit.")
     while (true) {
       print("> ")
-      write(eval(read(new PushbackInputStream(System.in))))
+      write(eval(read(new PushbackInputStream(System.in)), global_env))
       println()
     }
   }

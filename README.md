@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.9 Added environment, variables, definitions and assignments
 * v0.8 Added quoted expressions
 * v0.7 Symbols
 * v0.6 Support for lists and pairs
