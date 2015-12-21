@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.13 Added support for `lambda` functions
 * v0.12 Added more primitive functions
     - `null?`
     - `boolean?`

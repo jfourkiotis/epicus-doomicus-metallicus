@@ -8,15 +8,22 @@ import scala.collection.mutable.ArrayBuffer
 
 trait Value
 
-case class Fixnum(v: Integer) extends Value
+case class Fixnum(v: Integer) extends Value {
+  override def toString = v.toString
+}
 case object True extends Value
 case object False extends Value
 case object Empty extends Value
 case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
-case class Symbol(v: String) extends Value
-case class Pair(var first: Value, var second: Value) extends Value
+case class Symbol(v: String) extends Value {
+  override def toString = v
+}
+case class Pair(var first: Value, var second: Value) extends Value {
+  override def toString = "(" + first.toString + " , " + second.toString + ")"
+}
 case class PrimitiveProc(val fun: Value => Value) extends Value
+case class CompoundProc(params: Value, body: Value, env: Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
   val literals = new mutable.HashMap[T, U]()
@@ -44,6 +51,7 @@ object VM {
   val SET    = Symbol.mkLiteral("set!")
   val OK     = Symbol.mkLiteral("ok")
   val IF     = Symbol.mkLiteral("if")
+  val LAMBDA = Symbol.mkLiteral("lambda")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -245,6 +253,11 @@ object VM {
     case _ => false
   }
 
+  def isCompoundProc(v: Value) = v match {
+    case CompoundProc(_, _, _) => true
+    case _ => false
+  }
+
   def car(v: Value) = v match {
     case Pair(first, _) => first
     case _ => throw new ClassCastException()
@@ -257,7 +270,9 @@ object VM {
   def caar(v: Value) = car(car(v))
   def cddr(v: Value) = cdr(cdr(v))
   def cdar(v: Value) = cdr(car(v))
+  def caadr(v: Value) = car(cadr(v))
   def caddr(v: Value) = car(cddr(v))
+  def cdadr(v: Value) = cdr(cadr(v))
 
   def isTagged(expression: Value, tag: Value) = expression match {
     case Pair(first, _) => first == tag
@@ -378,12 +393,31 @@ object VM {
     *   > (define x 5)
     *   ok
     * }}}
+    *
+    * The definition can also be a compound procedure:
+    *
+    * {{{
+    *   > (define (fib n) ( ... ))
+    *   ok
+    * }}}
+    *
+    * The structure of this form is the following:
+    *
+    *  (define . +
+    *            |
+    *       ( +  .  + )
+    *         |     |
+    *     (fib n)  ( ... )
+    *
+    *
     * @param form the definition form
     * @return the cadr of the definition form
     */
   def isDefinition(form: Value) = isTagged(form, DEFINE)
-  def definitionVariable(form: Value) = cadr(form)
-  def definitionValue(form: Value) = caddr(form)
+  def definitionVariable(form: Value) = if (isSymbol(cadr(form))) cadr(form) else caadr(form)
+  def definitionValue(v: Value) = {
+    if (isSymbol(cadr(v))) caddr(v) else mkLambda(cdadr(v), cddr(v))
+  }
 
   def evalAssignment(form: Value, env: Value): Value = {
     setVariableValue(assignmentVariable(form), eval(assignmentValue(form), env), env)
@@ -394,6 +428,16 @@ object VM {
     defineVariable(definitionVariable(form), eval(definitionValue(form), env), env)
     OK
   }
+
+  def mkLambda(params: Value, body: Value) = Pair(LAMBDA, Pair(params, body))
+  def lambdaParameters(lambda: Value) = cadr(lambda)
+  def lambdaBody(lambda: Value) = cddr(lambda)
+  def isLambda(form: Value) = isTagged(form, LAMBDA)
+
+  def isLastExpression(seq: Value) = cdr(seq) == Empty
+  def firstExpression(seq: Value) = car(seq)
+  def restExpressions(seq: Value) = cdr(seq)
+
 
   def isVariable(v: Value) = isSymbol(v)
 
@@ -431,7 +475,6 @@ object VM {
     var result = car(current_args) match { case Fixnum(n) => n }
     while ({current_args = cdr(current_args); current_args != Empty}) {
       result -= (car(current_args) match { case Fixnum(n) => n })
-      current_args = cdr(current_args)
     }
     new Fixnum(result)
   }
@@ -536,7 +579,7 @@ object VM {
   def procIsSymbol(arguments: Value) = if (isSymbol(car(arguments))) True else False
   def procIsInteger(arguments: Value) = if (isFixnum(car(arguments))) True else False
   def procIsBoolean(arguments: Value) = if (isBoolean(car(arguments))) True else False
-  def procIsPrimitiveProcedure(arguments: Value) = if (isPrimitiveProc(car(arguments))) True else False
+  def procIsProcedure(arguments: Value) = if (isPrimitiveProc(car(arguments)) || isCompoundProc(car(arguments))) True else False
   def procIsPair(arguments: Value) = if (isPair(car(arguments))) True else False
   def procIsString(arguments: Value) = if (isString(car(arguments))) True else False
   def procIsCharacter(arguments: Value) = if (isCharacter(car(arguments))) True else False
@@ -597,7 +640,7 @@ object VM {
   createProcedure("char?", procIsCharacter)
   createProcedure("string?", procIsString)
   createProcedure("pair?", procIsPair)
-  createProcedure("procedure?", procIsPrimitiveProcedure)
+  createProcedure("procedure?", procIsProcedure)
 
   createProcedure("char->integer", procCharToInteger)
   createProcedure("integer->char", procIntegerToChar)
@@ -639,11 +682,23 @@ object VM {
     } else if (isIf(v)) {
       val branch = if (eval(ifPredicate(v), env) == True) ifConsequent(v) else ifAlternate(v)
       eval(branch, env)
+    } else if (isLambda(v)) {
+      CompoundProc(lambdaParameters(v), lambdaBody(v), env)
     } else if (isProcApplication(v)) {
       val proc = eval(procApplicationOperator(v), env)
       val arguments = listOfValues(procApplicationOperands(v), env)
       proc match {
         case PrimitiveProc(fun) => fun(arguments)
+        case CompoundProc(proc_params, proc_body, proc_env) => {
+          val new_env = extendEnvironment(proc_params, arguments, proc_env)
+          var new_exp = proc_body
+          while (!isLastExpression(new_exp)) {
+            eval(firstExpression(new_exp), new_env)
+            new_exp = restExpressions(new_exp)
+          }
+          new_exp = firstExpression(new_exp)
+          eval(new_exp, new_env)
+        }
         case _ => throw new RuntimeException("Invalid procedure object")
       }
     } else {
@@ -704,11 +759,12 @@ object VM {
       writePair(first, second)
       print(")")
     case PrimitiveProc(f) => print("#<procedude>")
+    case CompoundProc(_,_,_) => print("#<lambda-procedure>")
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.12. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.13. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
