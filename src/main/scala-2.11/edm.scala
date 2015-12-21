@@ -16,6 +16,7 @@ case class CharacterLit(v: Char) extends Value
 case class StringLit(v: String) extends Value
 case class Symbol(v: String) extends Value
 case class Pair(var first: Value, var second: Value) extends Value
+case class PrimitiveProc(val fun: Value => Value) extends Value
 
 class LiteralFactory[T, U](func: T => U) {
   val literals = new mutable.HashMap[T, U]()
@@ -386,6 +387,38 @@ object VM {
   def ifConsequent(form: Value) = caddr(form)
   def ifAlternate(form: Value) = car(cdr(cddr(form)))
 
+  def procAdd(arguments: Value) = {
+    var result = 0
+    var current_args = arguments
+    while (current_args != Empty) {
+      result += (car(current_args) match { case Fixnum(l) => l })
+      current_args = cdr(current_args)
+    }
+    new Fixnum(result)
+  }
+
+  def isPair(v: Value) = v match {
+    case Pair(_,_) => true
+    case _ => false
+  }
+
+  def isProcApplication(form: Value) = isPair(form)
+  def procApplicationOperator(form: Value) = car(form)
+  def procApplicationOperands(form: Value) = cdr(form)
+  def firstOperand(operands: Value) = car(operands)
+  def restOperands(operands: Value) = cdr(operands)
+  def noOperands(operands: Value) = operands == Empty
+
+  def listOfValues(operands: Value, env: Value): Value = {
+    if (noOperands(operands)) {
+      Empty
+    } else {
+      Pair(eval(firstOperand(operands), env), listOfValues(restOperands(operands), env))
+    }
+  }
+
+  defineVariable(Symbol.mkLiteral("+"), PrimitiveProc(procAdd), global_env)
+
   def eval(v: Value, env: Value): Value = {
     if (isSelfEvaluating(v)) {
       v
@@ -400,6 +433,13 @@ object VM {
     } else if (isIf(v)) {
       val branch = if (eval(ifPredicate(v), env) == True) ifConsequent(v) else ifAlternate(v)
       eval(branch, env)
+    } else if (isProcApplication(v)) {
+      val proc = eval(procApplicationOperator(v), env)
+      val arguments = listOfValues(procApplicationOperands(v), env)
+      proc match {
+        case PrimitiveProc(fun) => fun(arguments)
+        case _ => throw new RuntimeException("Invalid procedure object")
+      }
     } else {
       throw new RuntimeException("cannot eval unknown expression type")
     }
@@ -457,11 +497,12 @@ object VM {
       print("(")
       writePair(first, second)
       print(")")
+    case PrimitiveProc(f) => print("#<procedude>")
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.9. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.11. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))

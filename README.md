@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.11 Added the `+` primitive procedure
 * v0.10 Added the `if` form
 * v0.9  Added environment, variables, definitions and assignments
 * v0.8  Added quoted expressions
