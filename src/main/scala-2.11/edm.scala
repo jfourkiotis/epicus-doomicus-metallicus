@@ -213,8 +213,35 @@ object VM {
     case _ => false
   }
 
+  def isFixnum(v: Value) = v match {
+    case Fixnum(_) => true
+    case _ => false
+  }
+
   def isSymbol(v: Value) = v match {
     case Symbol(_) => true
+    case _ => false
+  }
+
+  def isPair(v: Value) = v match {
+    case Pair(_,_) => true
+    case _ => false
+  }
+
+  def isString(v: Value) = v match {
+    case StringLit(_) => true
+    case _ => false
+  }
+
+  def isCharacter(v: Value) = v match {
+    case CharacterLit(_) => true
+    case _ => false
+  }
+
+  def isBoolean(v: Value) = v == True || v == False
+
+  def isPrimitiveProc(v: Value) = v match {
+    case PrimitiveProc(_) => true
     case _ => false
   }
 
@@ -227,7 +254,9 @@ object VM {
     case _ => throw new ClassCastException
   }
   def cadr(v: Value) = car(cdr(v))
+  def caar(v: Value) = car(car(v))
   def cddr(v: Value) = cdr(cdr(v))
+  def cdar(v: Value) = cdr(car(v))
   def caddr(v: Value) = car(cddr(v))
 
   def isTagged(expression: Value, tag: Value) = expression match {
@@ -397,9 +426,149 @@ object VM {
     new Fixnum(result)
   }
 
-  def isPair(v: Value) = v match {
-    case Pair(_,_) => true
-    case _ => false
+  def procSub(arguments: Value) = {
+    var current_args = arguments
+    var result = car(current_args) match { case Fixnum(n) => n }
+    while ({current_args = cdr(current_args); current_args != Empty}) {
+      result -= (car(current_args) match { case Fixnum(n) => n })
+      current_args = cdr(current_args)
+    }
+    new Fixnum(result)
+  }
+
+  def procMul(arguments: Value) = {
+    var result = 1
+    var current_args = arguments
+    while (current_args != Empty) {
+      result *= (car(current_args) match { case Fixnum(n) => n })
+      current_args = cdr(current_args)
+    }
+    new Fixnum(result)
+  }
+
+  def fixnumToInt(v: Value) = v match {
+    case Fixnum(n) => n
+    case _ => throw new RuntimeException("value not integer")
+  }
+
+  def procQuotient(arguments: Value) = {
+    val a = fixnumToInt(car(arguments))
+    val b = fixnumToInt(cadr(arguments))
+    new Fixnum(a / b)
+  }
+
+  def procRemainder(arguments: Value) = {
+    val a = fixnumToInt(car(arguments))
+    val b = fixnumToInt(cadr(arguments))
+    new Fixnum(a % b)
+  }
+
+  def procAreNumbersEqual(arguments: Value): Value = {
+    var current_args = arguments
+    val n = fixnumToInt(car(current_args))
+    while ({current_args = cdr(current_args); current_args != Empty}) {
+      if (n != fixnumToInt(car(current_args))) {
+        return False
+      }
+    }
+    return True
+  }
+
+  def procIsLessThan(arguments: Value): Value = {
+    var current_args = arguments
+    var previous = fixnumToInt(car(current_args))
+    var next = 0
+    while ({current_args = cdr(current_args); current_args != Empty}) {
+      next = fixnumToInt(car(current_args))
+      if (previous < next) {
+        previous = next
+      } else {
+        return False
+      }
+    }
+    return True
+  }
+
+  def procIsGreaterThan(arguments: Value): Value = {
+    var current_args = arguments
+    var previous = fixnumToInt(car(current_args))
+    var next = 0
+    while ({current_args = cdr(current_args); current_args != Empty}) {
+      next = fixnumToInt(car(current_args))
+      if (previous > next) {
+        previous = next
+      } else {
+        return False
+      }
+    }
+    return True
+  }
+
+  def procCons(arguments: Value) = Pair(car(arguments), cadr(arguments))
+  def procCar(arguments: Value) = caar(arguments)
+  def procCdr(arguments: Value) = cdar(arguments)
+  def procSetCar(arguments: Value) = {
+    val p = car(arguments).asInstanceOf[Pair]
+    p.first = cadr(arguments)
+    OK
+  }
+  def procSetCdr(arguments: Value) = {
+    val p = car(arguments).asInstanceOf[Pair]
+    p.second = cadr(arguments)
+    OK
+  }
+
+  def procList(arguments: Value) = arguments
+
+  def procIsEq(arguments: Value) = {
+    val obj1 = car(arguments)
+    val obj2 = cadr(arguments)
+
+    (obj1, obj2) match {
+      case (Fixnum(n1), Fixnum(n2)) => if (n1 == n2) True else False
+      case (CharacterLit(c1), CharacterLit(c2)) => if (c1 == c2) True else False
+      case (StringLit(s1), StringLit(s2)) => if (s1 == s2) True else False
+      case _ => if (obj1 == obj2) True else False
+    }
+  }
+
+  def procIsNull(arguments: Value) = if (car(arguments) == Empty) True else False
+  def procIsSymbol(arguments: Value) = if (isSymbol(car(arguments))) True else False
+  def procIsInteger(arguments: Value) = if (isFixnum(car(arguments))) True else False
+  def procIsBoolean(arguments: Value) = if (isBoolean(car(arguments))) True else False
+  def procIsPrimitiveProcedure(arguments: Value) = if (isPrimitiveProc(car(arguments))) True else False
+  def procIsPair(arguments: Value) = if (isPair(car(arguments))) True else False
+  def procIsString(arguments: Value) = if (isString(car(arguments))) True else False
+  def procIsCharacter(arguments: Value) = if (isCharacter(car(arguments))) True else False
+
+  def procCharToInteger(arguments: Value) = car(arguments) match {
+    case CharacterLit(c) => Fixnum(c.toInt)
+    case _ => throw new RuntimeException("invalid argument type (expected character)")
+  }
+
+  def procIntegerToChar(arguments: Value) = car(arguments) match {
+    case Fixnum(n) => CharacterLit.mkLiteral(n.toChar)
+    case _ => throw new RuntimeException("invalid argument type (expected integer)")
+  }
+
+  def procNumberToString(arguments: Value) = car(arguments) match {
+    case Fixnum(n) => StringLit.mkLiteral(n.toString)
+    case _ => throw new RuntimeException("invalid argument type (expected integer)")
+  }
+
+  def procStringToNumber(arguments: Value) = car(arguments) match {
+    case StringLit(s) => Fixnum(s.toInt)
+    case _ => throw new RuntimeException("invalid argument type (expected string)")
+  }
+
+  def procSymbolToString(arguments: Value) = car(arguments) match {
+    case Symbol(s) => StringLit.mkLiteral(s)
+    case _ => throw new RuntimeException("invalid argument type (expected symbol)")
+  }
+
+  def procStringToSymbol(arguments: Value) = car(arguments) match {
+    case StringLit(s) => Symbol.mkLiteral(s)
+    case _ => throw new RuntimeException("invalid argument type (expected string)")
   }
 
   def isProcApplication(form: Value) = isPair(form)
@@ -417,7 +586,44 @@ object VM {
     }
   }
 
-  defineVariable(Symbol.mkLiteral("+"), PrimitiveProc(procAdd), global_env)
+  def createProcedure(name: String, fun: Value => Value): Unit = {
+    defineVariable(Symbol.mkLiteral(name), PrimitiveProc(fun), global_env)
+  }
+
+  createProcedure("null?", procIsNull)
+  createProcedure("boolean?", procIsBoolean)
+  createProcedure("symbol?", procIsSymbol)
+  createProcedure("integer?", procIsInteger)
+  createProcedure("char?", procIsCharacter)
+  createProcedure("string?", procIsString)
+  createProcedure("pair?", procIsPair)
+  createProcedure("procedure?", procIsPrimitiveProcedure)
+
+  createProcedure("char->integer", procCharToInteger)
+  createProcedure("integer->char", procIntegerToChar)
+  createProcedure("number->string", procNumberToString)
+  createProcedure("string->number", procStringToNumber)
+  createProcedure("symbol->string", procSymbolToString)
+  createProcedure("string->symbol", procStringToSymbol)
+
+
+  createProcedure("+", procAdd)
+  createProcedure("-", procSub)
+  createProcedure("*", procMul)
+  createProcedure("quotient", procQuotient)
+  createProcedure("remainder", procRemainder)
+  createProcedure("=", procAreNumbersEqual)
+  createProcedure("<", procIsLessThan)
+  createProcedure(">", procIsGreaterThan)
+
+  createProcedure("cons", procCons)
+  createProcedure("car", procCar)
+  createProcedure("cdr", procCdr)
+  createProcedure("set-car!", procSetCar)
+  createProcedure("set-cdr!", procSetCdr)
+  createProcedure("list", procList)
+  createProcedure("eq?", procIsEq)
+
 
   def eval(v: Value, env: Value): Value = {
     if (isSelfEvaluating(v)) {
@@ -502,7 +708,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.11. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.12. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))

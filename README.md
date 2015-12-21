@@ -4,6 +4,38 @@
 
 ### changes
 
+* v0.12 Added more primitive functions
+        - `null?`
+        - `boolean?`
+        - `symbol?`
+        - `integer?`
+        - `char?`
+        - `string?`
+        - `pair?`
+        - `procedure?`
+        - `number->string`
+        - `string->number`
+        - `symbol->string`
+        - `string->symbol`
+        - `char->integer`
+        - `integer->char`
+        - `+`
+        - `-`
+        - `*`
+        - `quotient`
+        - `remainder`
+        - `=`
+        - `<`
+        - `>`
+        - `cons`
+        - `car`
+        - `cdr`
+        - `set-car!`
+        - `set-cdr!`
+        - `list`
+        - `eq?`
+
+
 * v0.11 Added the `+` primitive procedure
 * v0.10 Added the `if` form
 * v0.9  Added environment, variables, definitions and assignments
