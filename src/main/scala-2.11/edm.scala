@@ -704,6 +704,18 @@ object VM {
     defineVariable(Symbol.mkLiteral(name), PrimitiveProc(fun), global_env)
   }
 
+  val procApply: Value => Value = v => throw new RuntimeException("illegal state: the body of `apply` should not execute")
+
+  def applyOperator(arguments: Value) = car(arguments)
+
+  def prepareApplyOperands(arguments: Value): Value = if (isLastExpression(arguments)) {
+    car(arguments)
+  } else {
+    Pair(car(arguments), prepareApplyOperands(cdr(arguments)))
+  }
+
+  def applyOperands(arguments: Value) = prepareApplyOperands(cdr(arguments))
+
   createProcedure("null?", procIsNull)
   createProcedure("boolean?", procIsBoolean)
   createProcedure("symbol?", procIsSymbol)
@@ -737,6 +749,8 @@ object VM {
   createProcedure("set-cdr!", procSetCdr)
   createProcedure("list", procList)
   createProcedure("eq?", procIsEq)
+
+  createProcedure("apply", procApply)
 
 
   def eval(v: Value, env: Value): Value = {
@@ -794,8 +808,17 @@ object VM {
         eval(new_v, env)
       }
     } else if (isProcApplication(v)) {
-      val proc = eval(procApplicationOperator(v), env)
-      val arguments = listOfValues(procApplicationOperands(v), env)
+      var proc = eval(procApplicationOperator(v), env)
+      var arguments = listOfValues(procApplicationOperands(v), env)
+
+      proc match {
+        case PrimitiveProc(fun) => if (fun == procApply) {
+          proc = applyOperator(arguments)
+          arguments = applyOperands(arguments)
+        }
+        case _ => ;
+      }
+
       proc match {
         case PrimitiveProc(fun) => fun(arguments)
         case CompoundProc(proc_params, proc_body, proc_env) => {
@@ -873,7 +896,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to EDM v0.17. Use ctrl-c to exit.")
+    println("Welcome to EDM v0.18. Use ctrl-c to exit.")
     while (true) {
       print("edm> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))

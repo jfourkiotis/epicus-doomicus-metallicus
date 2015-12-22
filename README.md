@@ -4,6 +4,9 @@
 
 ### changes
 
+* v0.19 Exposed the interaction environment. Creation of new environment is allowed.
+        Support for the `eval` form
+* v0.18 Support for the `apply` form
 * v0.17 Added the `and` and `or` forms
 * v0.16 Added the `let` form
 * v0.15 Support for the `cond` form
