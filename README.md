@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.14 Added support for the `begin` form
 * v0.13 Added support for `lambda` functions
 * v0.12 Added more primitive functions
     - `null?`

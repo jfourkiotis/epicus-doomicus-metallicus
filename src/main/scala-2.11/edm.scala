@@ -52,6 +52,7 @@ object VM {
   val OK     = Symbol.mkLiteral("ok")
   val IF     = Symbol.mkLiteral("if")
   val LAMBDA = Symbol.mkLiteral("lambda")
+  val BEGIN  = Symbol.mkLiteral("begin")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -438,6 +439,10 @@ object VM {
   def firstExpression(seq: Value) = car(seq)
   def restExpressions(seq: Value) = cdr(seq)
 
+  def mkBegin(v: Value) = Pair(BEGIN, v)
+  def isBegin(v: Value) = isTagged(v, BEGIN)
+  def beginActions(v: Value) = cdr(v)
+
 
   def isVariable(v: Value) = isSymbol(v)
 
@@ -684,6 +689,14 @@ object VM {
       eval(branch, env)
     } else if (isLambda(v)) {
       CompoundProc(lambdaParameters(v), lambdaBody(v), env)
+    } else if (isBegin(v)) {
+      var actions = beginActions(v)
+      while (!isLastExpression(actions)) {
+        eval(firstExpression(actions), env)
+        actions = restExpressions(actions)
+      }
+      actions = firstExpression(actions)
+      eval(actions, env)
     } else if (isProcApplication(v)) {
       val proc = eval(procApplicationOperator(v), env)
       val arguments = listOfValues(procApplicationOperands(v), env)
@@ -764,7 +777,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.13. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.14. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
