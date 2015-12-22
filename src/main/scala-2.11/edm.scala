@@ -56,6 +56,8 @@ object VM {
   val COND   = Symbol.mkLiteral("cond")
   val ELSE   = Symbol.mkLiteral("else")
   val LET    = Symbol.mkLiteral("let")
+  val AND    = Symbol.mkLiteral("and")
+  val OR     = Symbol.mkLiteral("or")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -499,6 +501,11 @@ object VM {
   def ifConsequent(form: Value) = caddr(form)
   def ifAlternate(form: Value) = car(cdr(cddr(form)))
 
+  def isAnd(form: Value) = isTagged(form, AND)
+  def andTests(form: Value) = cdr(form)
+  def isOr(form: Value) = isTagged(form, OR)
+  def orTests(form: Value) = cdr(form)
+
   def procAdd(arguments: Value) = {
     var result = 0
     var current_args = arguments
@@ -762,6 +769,30 @@ object VM {
     } else if (isLet(v)) {
       val new_v = letToApplication(v)
       eval(new_v, env)
+    } else if (isAnd(v)) {
+      var new_v = andTests(v)
+      if (new_v == Empty) True
+      else {
+        while (!isLastExpression(new_v)) {
+          val r = eval(firstExpression(new_v), env)
+          if (r == False) return r
+          new_v = restExpressions(new_v)
+        }
+        new_v = firstExpression(new_v)
+        eval(new_v, env)
+      }
+    } else if (isOr(v)) {
+      var new_v = orTests(v)
+      if (new_v == Empty) False
+      else {
+        while (!isLastExpression(new_v)) {
+          val r = eval(firstExpression(new_v), env)
+          if (r != False) return r
+          new_v = restExpressions(new_v)
+        }
+        new_v = firstExpression(new_v)
+        eval(new_v, env)
+      }
     } else if (isProcApplication(v)) {
       val proc = eval(procApplicationOperator(v), env)
       val arguments = listOfValues(procApplicationOperands(v), env)
