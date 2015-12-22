@@ -53,6 +53,8 @@ object VM {
   val IF     = Symbol.mkLiteral("if")
   val LAMBDA = Symbol.mkLiteral("lambda")
   val BEGIN  = Symbol.mkLiteral("begin")
+  val COND   = Symbol.mkLiteral("cond")
+  val ELSE   = Symbol.mkLiteral("else")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -443,6 +445,36 @@ object VM {
   def isBegin(v: Value) = isTagged(v, BEGIN)
   def beginActions(v: Value) = cdr(v)
 
+  def isCond(v: Value) = isTagged(v, COND)
+  def isCondElseClause(v: Value) = v == ELSE
+  def condClauses(cond: Value) = cdr(cond)
+  def condPredicate(clause: Value) = car(clause)
+  def condActions(clause: Value) = cdr(clause)
+
+  def sequenceToExp(seq: Value) = {
+    if (seq == Empty) {
+      seq
+    } else if (isLastExpression(seq)) {
+      firstExpression(seq)
+    } else {
+      mkBegin(seq)
+    }
+  }
+
+  def expandClauses(clauses: Value): Value = {
+    if (clauses == Empty) False
+    else {
+      val first = car(clauses)
+      val rest  = cdr(clauses)
+      if (isCondElseClause(first)) {
+        if (rest == Empty) sequenceToExp(condActions(first)) else throw new RuntimeException("else clause isn't last")
+      } else {
+        makeIf(condPredicate(first), sequenceToExp(condActions(first)), expandClauses(rest))
+      }
+    }
+  }
+
+  def condToIf(cond: Value) = expandClauses(condClauses(cond))
 
   def isVariable(v: Value) = isSymbol(v)
 
@@ -461,6 +493,7 @@ object VM {
     * @return true if the form is an `if` form.
     */
   def isIf(form: Value) = isTagged(form, IF)
+  def makeIf(predicate: Value, conseq: Value, alter: Value) = Pair(IF, Pair(predicate, Pair(conseq, Pair(alter, Empty))))
   def ifPredicate(form: Value) = cadr(form)
   def ifConsequent(form: Value) = caddr(form)
   def ifAlternate(form: Value) = car(cdr(cddr(form)))
@@ -697,6 +730,9 @@ object VM {
       }
       actions = firstExpression(actions)
       eval(actions, env)
+    } else if (isCond(v)) {
+      val new_v = condToIf(v)
+      eval(new_v, env)
     } else if (isProcApplication(v)) {
       val proc = eval(procApplicationOperator(v), env)
       val arguments = listOfValues(procApplicationOperands(v), env)
@@ -777,7 +813,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.14. Use ctrl-c to exit.")
+    println("Welcome to Epicus-Doomicus-Metallicus v0.15. Use ctrl-c to exit.")
     while (true) {
       print("> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
