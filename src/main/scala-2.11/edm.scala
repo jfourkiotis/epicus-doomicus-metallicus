@@ -873,7 +873,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to EDM v0.16. Use ctrl-c to exit.")
+    println("Welcome to EDM v0.17. Use ctrl-c to exit.")
     while (true) {
       print("edm> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
