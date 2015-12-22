@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.16 Added the `let` form
 * v0.15 Support for the `cond` form
 * v0.14 Added support for the `begin` form
 * v0.13 Added support for `lambda` functions

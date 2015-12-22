@@ -55,6 +55,7 @@ object VM {
   val BEGIN  = Symbol.mkLiteral("begin")
   val COND   = Symbol.mkLiteral("cond")
   val ELSE   = Symbol.mkLiteral("else")
+  val LET    = Symbol.mkLiteral("let")
 
   def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
 
@@ -658,6 +659,31 @@ object VM {
   def firstOperand(operands: Value) = car(operands)
   def restOperands(operands: Value) = cdr(operands)
   def noOperands(operands: Value) = operands == Empty
+  def makeApplication(operator: Value, operands: Value) = Pair(operator, operands)
+
+  def isLet(form: Value) = isTagged(form, LET)
+  def letBindings(form: Value) = cadr(form)
+  def letBody(form: Value) = cddr(form)
+
+  def bindingParam(binding: Value) = car(binding)
+  def bindingArg(binding: Value) = cadr(binding)
+
+  def bindingParameters(bindings: Value): Value = if (bindings == Empty) {
+    Empty
+  } else {
+    Pair(bindingParam(car(bindings)), bindingParameters(cdr(bindings)))
+  }
+
+  def bindingArguments(bindings: Value): Value = if (bindings == Empty) {
+    Empty
+  } else {
+    Pair(bindingArg(car(bindings)), bindingArguments(cdr(bindings)))
+  }
+
+  def letParameters(v: Value) = bindingParameters(letBindings(v))
+  def letArguments(v: Value) = bindingArguments(letBindings(v))
+
+  def letToApplication(v: Value) = makeApplication(mkLambda(letParameters(v),letBody(v)), letArguments(v))
 
   def listOfValues(operands: Value, env: Value): Value = {
     if (noOperands(operands)) {
@@ -732,6 +758,9 @@ object VM {
       eval(actions, env)
     } else if (isCond(v)) {
       val new_v = condToIf(v)
+      eval(new_v, env)
+    } else if (isLet(v)) {
+      val new_v = letToApplication(v)
       eval(new_v, env)
     } else if (isProcApplication(v)) {
       val proc = eval(procApplicationOperator(v), env)
@@ -813,9 +842,9 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to Epicus-Doomicus-Metallicus v0.15. Use ctrl-c to exit.")
+    println("Welcome to EDM v0.16. Use ctrl-c to exit.")
     while (true) {
-      print("> ")
+      print("edm> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
       println()
     }
