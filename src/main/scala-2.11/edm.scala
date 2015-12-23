@@ -8,7 +8,7 @@ import scala.collection.mutable.ArrayBuffer
 
 trait Value
 
-case class Fixnum(v: Integer) extends Value {
+case class Fixnum(v: Long) extends Value {
   override def toString = v.toString
 }
 case object True extends Value
@@ -508,7 +508,7 @@ object VM {
   def orTests(form: Value) = cdr(form)
 
   def procAdd(arguments: Value) = {
-    var result = 0
+    var result: Long = 0
     var current_args = arguments
     while (current_args != Empty) {
       result += (car(current_args) match { case Fixnum(l) => l })
@@ -527,7 +527,7 @@ object VM {
   }
 
   def procMul(arguments: Value) = {
-    var result = 1
+    var result: Long = 1
     var current_args = arguments
     while (current_args != Empty) {
       result *= (car(current_args) match { case Fixnum(n) => n })
@@ -567,7 +567,7 @@ object VM {
   def procIsLessThan(arguments: Value): Value = {
     var current_args = arguments
     var previous = fixnumToInt(car(current_args))
-    var next = 0
+    var next: Long = 0
     while ({current_args = cdr(current_args); current_args != Empty}) {
       next = fixnumToInt(car(current_args))
       if (previous < next) {
@@ -582,7 +582,7 @@ object VM {
   def procIsGreaterThan(arguments: Value): Value = {
     var current_args = arguments
     var previous = fixnumToInt(car(current_args))
-    var next = 0
+    var next: Long = 0
     while ({current_args = cdr(current_args); current_args != Empty}) {
       next = fixnumToInt(car(current_args))
       if (previous > next) {
@@ -833,6 +833,8 @@ object VM {
     OK
   }
 
+  def procCurrentTimeMillis(arguments: Value) = Fixnum(System.currentTimeMillis())
+
   def populateEnvironment(env: Value) = {
     createProcedure("null?", procIsNull, env)
     createProcedure("boolean?", procIsBoolean, env)
@@ -894,6 +896,9 @@ object VM {
 
     createProcedure("error", procError, env)
     createProcedure("eof-object?", procIsEof, env)
+
+    // utilities
+    createProcedure("current-time-millis", procCurrentTimeMillis, env)
   }
 
   def makeEnvironment(): Value = {
