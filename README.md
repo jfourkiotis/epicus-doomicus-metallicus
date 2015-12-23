@@ -1,6 +1,15 @@
 ## epicus-doomicus-metallicus
 
-`epicus-doomicus-metallicus` will be a very basic **scheme** interpreter written in `Scala`.
+`epicus-doomicus-metallicus` is a very basic **scheme** interpreter written in `Scala`. It is based on the tutorial series [scheme-from-scratch](http://peter.michaux.ca/articles/scheme-from-scratch-introduction). To build `epicus-doomicus-metallicus`, you'll need `sbt`.
+
+### Usage
+Download the latest [distribution](https://bitbucket.org/jfourkiotis/epicus-doomicus-metallicus/downloads) `jar` and type:
+
+    java -jar latest_distribution.jar
+
+You can also pass `scheme` source files as input to the interpreter as follows:
+
+    java -jar latest_distribution.jar file1.scm file2.scm ...
 
 ### changes
 
