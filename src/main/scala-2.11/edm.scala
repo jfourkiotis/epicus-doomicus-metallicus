@@ -22,7 +22,7 @@ case class Symbol(v: String) extends Value {
 case class Pair(var first: Value, var second: Value) extends Value {
   override def toString = "(" + first.toString + " , " + second.toString + ")"
 }
-case class PrimitiveProc(val fun: Value => Value) extends Value
+case class PrimitiveProc(fun: Value => Value) extends Value
 case class CompoundProc(params: Value, body: Value, env: Value) extends Value
 case class InputPort(stream: PushbackReader) extends Value
 case class OutputPort(stream: PrintStream) extends Value
@@ -561,7 +561,7 @@ object VM {
         return False
       }
     }
-    return True
+    True
   }
 
   def procIsLessThan(arguments: Value): Value = {
@@ -576,7 +576,7 @@ object VM {
         return False
       }
     }
-    return True
+    True
   }
 
   def procIsGreaterThan(arguments: Value): Value = {
@@ -591,7 +591,7 @@ object VM {
         return False
       }
     }
-    return True
+    True
   }
 
   def procCons(arguments: Value) = Pair(car(arguments), cadr(arguments))
@@ -724,7 +724,7 @@ object VM {
   def evalEnvironment(arguments: Value) = cadr(arguments)
 
   def procLoad(arguments: Value): Value = car(arguments) match {
-    case StringLit(s) => {
+    case StringLit(s) =>
       val in = new PushbackReader(new BufferedReader(new FileReader(s)))
       var v: Value = null
       var result: Value = null
@@ -733,15 +733,13 @@ object VM {
       }
       in.close()
       result
-    }
     case _ => null
   }
 
   def procOpenInputPort(arguments: Value) = car(arguments) match {
-    case StringLit(s) => {
+    case StringLit(s) =>
       val in = new PushbackReader(new BufferedReader(new FileReader(s)))
       InputPort(in)
-    }
     case _ => throw new RuntimeException("invalid arguments")
   }
 
@@ -807,10 +805,9 @@ object VM {
   }
 
   def procOpenOutputPort(arguments: Value) = car(arguments) match {
-    case StringLit(s) => {
+    case StringLit(s) =>
       val out = new PrintStream(s)
       OutputPort(out)
-    }
     case _ => throw new RuntimeException("invalid arguments")
   }
 
@@ -990,7 +987,7 @@ object VM {
 
       proc match {
         case PrimitiveProc(fun) => fun(arguments)
-        case CompoundProc(proc_params, proc_body, proc_env) => {
+        case CompoundProc(proc_params, proc_body, proc_env) =>
           val new_env = extendEnvironment(proc_params, arguments, proc_env)
           var new_exp = proc_body
           while (!isLastExpression(new_exp)) {
@@ -999,7 +996,6 @@ object VM {
           }
           new_exp = firstExpression(new_exp)
           eval(new_exp, new_env)
-        }
         case _ => throw new RuntimeException("Invalid procedure object")
       }
     } else {
