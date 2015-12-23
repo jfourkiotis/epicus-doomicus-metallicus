@@ -793,9 +793,10 @@ object VM {
   }
 
   def procWrite(arguments: Value) = {
-    val out = if (arguments == Empty) {
+    val exp = car(arguments)
+    val out = if (cdr(arguments) == Empty) {
       System.out
-    } else car(arguments) match {
+    } else cdr(arguments) match {
       case OutputPort(stream) => stream
       case _ => throw new RuntimeException("invalid argument")
     }
@@ -1068,8 +1069,20 @@ object VM {
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
-  def repl(): Unit = {
-    System.out.println("Welcome to EDM v0.20. Use ctrl-c to exit.")
+  def repl(args: Array[String]): Unit = {
+    System.out.println("Welcome to EDM v0.21. Use ctrl-c to exit.")
+
+    /* load all files given as arguments */
+    for (arg <- args) {
+      val result = procLoad(Pair(StringLit.mkLiteral(arg), Empty))
+      if (result == null) {
+        throw new RuntimeException("error while loading $arg")
+      } else {
+        write(System.out, result)
+        System.out.println()
+      }
+    }
+
     while (true ) {
       System.out.print("edm> ")
       val v = read(new PushbackReader(new InputStreamReader(System.in)))
@@ -1085,5 +1098,5 @@ object VM {
 }
 
 object edm extends App {
-  VM.repl()
+  VM.repl(args)
 }
