@@ -4,6 +4,7 @@
 
 ### changes
 
+* v0.21 Added the `current-time-millis` primitive.
 * v0.20 Added I/O primitives
     - `load`
     - `open-input-port`
