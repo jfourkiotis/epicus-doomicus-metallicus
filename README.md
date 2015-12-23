@@ -4,6 +4,20 @@
 
 ### changes
 
+* v0.20 Added I/O primitives
+    - `load`
+    - `open-input-port`
+    - `close-input-port`
+    - `input-port?`
+    - `eof-object?`
+    - `read`
+    - `read-char`
+    - `peek-char`
+    - `open-output-port`
+    - `close-output-port`
+    - `write-char`
+    - `write`
+    - `error`
 * v0.19 Exposed the interaction environment. Creation of new environment is allowed.
         Support for the `eval` form
 * v0.18 Support for the `apply` form

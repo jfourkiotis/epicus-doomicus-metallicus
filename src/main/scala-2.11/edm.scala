@@ -1,6 +1,4 @@
-import java.io.PushbackInputStream
-import com.sun.istack.internal.NotNull
-
+import java.io._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -26,6 +24,9 @@ case class Pair(var first: Value, var second: Value) extends Value {
 }
 case class PrimitiveProc(val fun: Value => Value) extends Value
 case class CompoundProc(params: Value, body: Value, env: Value) extends Value
+case class InputPort(stream: PushbackReader) extends Value
+case class OutputPort(stream: PrintStream) extends Value
+case object Eof extends Value
 
 class LiteralFactory[T, U](func: T => U) {
   val literals = new mutable.HashMap[T, U]()
@@ -61,11 +62,11 @@ object VM {
   val AND    = Symbol.mkLiteral("and")
   val OR     = Symbol.mkLiteral("or")
 
-  def isDelimiter(c: Char) = c == eof || Character.isWhitespace(c) || delims.contains(c)
+  def isDelimiter(c: Char) = c == eof.toChar || Character.isWhitespace(c) || delims.contains(c)
 
   def isInitial(c: Char) = Character.isAlphabetic(c) || initials.contains(c)
 
-  def eatWhitespace(stream: PushbackInputStream): Unit = {
+  def eatWhitespace(stream: PushbackReader): Unit = {
     var c = 0
     while ({c = stream.read(); c != -1}) {
       if (Character.isWhitespace(c)) return eatWhitespace(stream)
@@ -79,13 +80,13 @@ object VM {
     }
   }
 
-  def peek(stream: PushbackInputStream) = {
+  def peek(stream: PushbackReader) = {
     val c = stream.read()
     stream.unread(c)
     c
   }
 
-  def eatExpectedString(stream: PushbackInputStream, str: String): Unit = {
+  def eatExpectedString(stream: PushbackReader, str: String): Unit = {
     for (c <- str) {
       if (c != stream.read()) {
         throw new RuntimeException(s"unexpected character '$c'")
@@ -93,13 +94,13 @@ object VM {
     }
   }
 
-  def peekExpectedDelimiter(stream: PushbackInputStream): Unit = {
+  def peekExpectedDelimiter(stream: PushbackReader): Unit = {
     if (!isDelimiter(peek(stream).toChar)) {
       throw new RuntimeException("character not followed by delimiter")
     }
   }
 
-  def readCharacter(stream: PushbackInputStream): CharacterLit = {
+  def readCharacter(stream: PushbackReader): CharacterLit = {
     val c = stream.read()
     if (c == -1) {
       throw new RuntimeException("incomplete character literal")
@@ -120,7 +121,7 @@ object VM {
     return CharacterLit.mkLiteral(c.toChar)
   }
 
-  def readPair(stream: PushbackInputStream): Value = {
+  def readPair(stream: PushbackReader): Value = {
     eatWhitespace(stream)
 
     var c = stream.read()
@@ -150,7 +151,7 @@ object VM {
     }
   }
 
-  def read(stream: PushbackInputStream): Value = {
+  def read(stream: PushbackReader): Value = {
     eatWhitespace(stream)
 
     var c = stream.read()
@@ -193,7 +194,7 @@ object VM {
         c = stream.read()
       }
       if (isDelimiter(c.toChar)) {
-        stream.unread(c)
+        if (c != -1) stream.unread(c)
         Symbol.mkLiteral(buffer.mkString)
       } else {
         throw new RuntimeException(s"symbol not followed by delimiter. found '${c.toChar}'")
@@ -219,6 +220,8 @@ object VM {
       readPair(stream) /* read the empty list or pair */
     } else if (c == '\'') {
       Pair(QUOTE, Pair(read(stream), Empty))
+    } else if (c == -1) {
+      null
     } else {
       throw new RuntimeException(s"bad input. unexpected '${c.toChar}'")
     }
@@ -720,6 +723,119 @@ object VM {
   def evalExpression(arguments: Value) = car(arguments)
   def evalEnvironment(arguments: Value) = cadr(arguments)
 
+  def procLoad(arguments: Value): Value = car(arguments) match {
+    case StringLit(s) => {
+      val in = new PushbackReader(new BufferedReader(new FileReader(s)))
+      var v: Value = null
+      var result: Value = null
+      while ({v = read(in); v != null}) {
+        result = eval(v, global_env)
+      }
+      in.close()
+      result
+    }
+    case _ => null
+  }
+
+  def procOpenInputPort(arguments: Value) = car(arguments) match {
+    case StringLit(s) => {
+      val in = new PushbackReader(new BufferedReader(new FileReader(s)))
+      InputPort(in)
+    }
+    case _ => throw new RuntimeException("invalid arguments")
+  }
+
+  def procCloseInputPort(arguments: Value) = car(arguments) match {
+    case InputPort(p) => p.close(); OK
+    case _ => throw new RuntimeException("invalid arguments")
+  }
+
+  def procIsInputPort(arguments: Value) = car(arguments) match {
+    case InputPort(_) => True
+    case _ => False
+  }
+
+  def procRead(arguments: Value) = {
+    val in = if (arguments == Empty) {
+      new PushbackReader(new InputStreamReader(System.in))
+    } else car(arguments) match {
+      case InputPort(stream) => stream
+      case _ => throw new RuntimeException("invalid argument")
+    }
+    val result = read(in)
+    if (result == null) Eof else result
+  }
+
+  def procReadChar(arguments: Value) = {
+    val in = if (arguments == Empty) {
+      new PushbackReader(new InputStreamReader(System.in))
+    } else car(arguments) match {
+      case InputPort(stream) => stream
+      case _ => throw new RuntimeException("invalid argument")
+    }
+    val result = in.read()
+    if (result == -1) Eof else CharacterLit.mkLiteral(result.toChar)
+  }
+
+  def procPeekChar(arguments: Value) = ???
+
+  def procWriteChar(arguments: Value) = {
+    val character = car(arguments)
+    val args = cdr(arguments)
+
+    val out = if (args == Empty) {
+      System.out
+    } else car(args) match {
+      case OutputPort(stream) => stream
+      case _ => throw new RuntimeException("invalid argument")
+    }
+    out.write(character.asInstanceOf[CharacterLit].v)
+    out.flush()
+    OK
+  }
+
+  def procWrite(arguments: Value) = {
+    val out = if (arguments == Empty) {
+      System.out
+    } else car(arguments) match {
+      case OutputPort(stream) => stream
+      case _ => throw new RuntimeException("invalid argument")
+    }
+    write(out, car(arguments))
+    out.flush()
+    OK
+  }
+
+  def procOpenOutputPort(arguments: Value) = car(arguments) match {
+    case StringLit(s) => {
+      val out = new PrintStream(s)
+      OutputPort(out)
+    }
+    case _ => throw new RuntimeException("invalid arguments")
+  }
+
+  def procCloseOutputPort(arguments: Value) = car(arguments) match {
+    case OutputPort(p) => p.close(); OK
+    case _ => throw new RuntimeException("invalid arguments")
+  }
+
+  def procIsOutputPort(arguments: Value) = car(arguments) match {
+    case OutputPort(_) => True
+    case _ => False
+  }
+
+  def procIsEof(arguments: Value) = if (car(arguments) == Eof) True else False
+
+  def procError(arguments: Value) = {
+    var cur_args = arguments
+    if (cur_args != Empty) {
+      write(System.err, car(cur_args))
+      cur_args = cdr(cur_args)
+    }
+    System.exit(1)
+    OK
+  }
+
   def populateEnvironment(env: Value) = {
     createProcedure("null?", procIsNull, env)
     createProcedure("boolean?", procIsBoolean, env)
@@ -761,6 +877,26 @@ object VM {
     createProcedure("null-environment", procNullEnvironment, env)
     createProcedure("environment", procEnvironment, env)
     createProcedure("eval", procEval, env)
+
+    // I/O
+    createProcedure("load", procLoad, env)
+
+    createProcedure("open-input-port", procOpenInputPort, env)
+    createProcedure("close-input-port", procCloseInputPort, env)
+    createProcedure("input-port?", procIsInputPort, env)
+
+    createProcedure("read", procRead, env)
+    createProcedure("read-char", procReadChar, env)
+    createProcedure("peek-char", procPeekChar, env)
+    createProcedure("write-char", procWriteChar, env)
+    createProcedure("write", procWrite, env)
+
+    createProcedure("open-output-port", procOpenOutputPort, env)
+    createProcedure("close-output-port", procCloseOutputPort, env)
+    createProcedure("output-port?", procIsOutputPort, env)
+
+    createProcedure("error", procError, env)
+    createProcedure("eof-object?", procIsEof, env)
   }
 
   def makeEnvironment(): Value = {
@@ -898,42 +1034,51 @@ object VM {
     print("\"")
   }
 
-  def writePair(first: Value, second: Value): Unit = {
-    write(first)
+  def writePair(out: PrintStream, first: Value, second: Value): Unit = {
+    write(out, first)
     second match {
       case Pair(f, s) =>
-        print(" ")
-        writePair(f, s)
+        out.print(" ")
+        writePair(out, f, s)
       case Empty => ; /* do nothing */
       case _ =>
-        print(" . ")
-        write(second)
+        out.print(" . ")
+        write(out, second)
     }
   }
 
-  def write(v: Value) = v match {
-    case Fixnum(n) => print(n)
-    case True => print("#t")
-    case False => print("#f")
-    case Empty => print("()")
+  def write(out: PrintStream, v: Value) = v match {
+    case Fixnum(n) => out.print(n)
+    case True => out.print("#t")
+    case False => out.print("#f")
+    case Empty => out.print("()")
     case CharacterLit(c) => writeCharacter(c)
     case StringLit(s) => writeString(s)
-    case Symbol(s) => print(s)
+    case Symbol(s) => out.print(s)
     case Pair(first, second) =>
-      print("(")
-      writePair(first, second)
-      print(")")
-    case PrimitiveProc(f) => print("#<procedude>")
-    case CompoundProc(_,_,_) => print("#<lambda-procedure>")
+      out.print("(")
+      writePair(out, first, second)
+      out.print(")")
+    case PrimitiveProc(f) => out.print("#<primitive-procedude>")
+    case CompoundProc(_,_,_) => out.print("#<compound-procedure>")
+    case InputPort(_) => out.print("#input-port")
+    case OutputPort(_) => out.print("#output-port")
+    case Eof => out.print("#eof")
     case _ => throw new RuntimeException("Cannot write unknown type")
   }
 
   def repl(): Unit = {
-    println("Welcome to EDM v0.19. Use ctrl-c to exit.")
-    while (true) {
-      print("edm> ")
-      write(eval(read(new PushbackInputStream(System.in)), global_env))
-      println()
+    System.out.println("Welcome to EDM v0.20. Use ctrl-c to exit.")
+    while (true ) {
+      System.out.print("edm> ")
+      val v = read(new PushbackReader(new InputStreamReader(System.in)))
+      if (v == null) {
+        System.out.println("Goodbye")
+        return
+      } else {
+        write(System.out, eval(v, global_env))
+        System.out.println()
+      }
     }
   }
 }
