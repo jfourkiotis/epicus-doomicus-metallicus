@@ -1,4 +1,6 @@
 import java.io.PushbackInputStream
+import com.sun.istack.internal.NotNull
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -297,10 +299,6 @@ object VM {
     * @return the quoted value
     */
   def quotationText(expression: Value) = cadr(expression)
-
-
-  val empty_env = Empty
-  val global_env = setupEnvironment()
 
   /**
     * A frame is a Pair of two lists- a list of variables and a list of values
@@ -700,8 +698,10 @@ object VM {
     }
   }
 
-  def createProcedure(name: String, fun: Value => Value): Unit = {
-    defineVariable(Symbol.mkLiteral(name), PrimitiveProc(fun), global_env)
+
+  def createProcedure(name: String, fun: Value => Value, env: Value): Unit = {
+    require(fun != null)
+    defineVariable(Symbol.mkLiteral(name), PrimitiveProc(fun), env)
   }
 
   val procApply: Value => Value = v => throw new RuntimeException("illegal state: the body of `apply` should not execute")
@@ -716,41 +716,65 @@ object VM {
 
   def applyOperands(arguments: Value) = prepareApplyOperands(cdr(arguments))
 
-  createProcedure("null?", procIsNull)
-  createProcedure("boolean?", procIsBoolean)
-  createProcedure("symbol?", procIsSymbol)
-  createProcedure("integer?", procIsInteger)
-  createProcedure("char?", procIsCharacter)
-  createProcedure("string?", procIsString)
-  createProcedure("pair?", procIsPair)
-  createProcedure("procedure?", procIsProcedure)
+  val procEval: Value => Value = v => throw new RuntimeException("illegal state: the body of `eval` should not execute")
+  def evalExpression(arguments: Value) = car(arguments)
+  def evalEnvironment(arguments: Value) = cadr(arguments)
 
-  createProcedure("char->integer", procCharToInteger)
-  createProcedure("integer->char", procIntegerToChar)
-  createProcedure("number->string", procNumberToString)
-  createProcedure("string->number", procStringToNumber)
-  createProcedure("symbol->string", procSymbolToString)
-  createProcedure("string->symbol", procStringToSymbol)
+  def populateEnvironment(env: Value) = {
+    createProcedure("null?", procIsNull, env)
+    createProcedure("boolean?", procIsBoolean, env)
+    createProcedure("symbol?", procIsSymbol, env)
+    createProcedure("integer?", procIsInteger, env)
+    createProcedure("char?", procIsCharacter, env)
+    createProcedure("string?", procIsString, env)
+    createProcedure("pair?", procIsPair, env)
+    createProcedure("procedure?", procIsProcedure, env)
+
+    createProcedure("char->integer", procCharToInteger, env)
+    createProcedure("integer->char", procIntegerToChar, env)
+    createProcedure("number->string", procNumberToString, env)
+    createProcedure("string->number", procStringToNumber, env)
+    createProcedure("symbol->string", procSymbolToString, env)
+    createProcedure("string->symbol", procStringToSymbol, env)
 
 
-  createProcedure("+", procAdd)
-  createProcedure("-", procSub)
-  createProcedure("*", procMul)
-  createProcedure("quotient", procQuotient)
-  createProcedure("remainder", procRemainder)
-  createProcedure("=", procAreNumbersEqual)
-  createProcedure("<", procIsLessThan)
-  createProcedure(">", procIsGreaterThan)
+    createProcedure("+", procAdd, env)
+    createProcedure("-", procSub, env)
+    createProcedure("*", procMul, env)
+    createProcedure("quotient", procQuotient, env)
+    createProcedure("remainder", procRemainder, env)
+    createProcedure("=", procAreNumbersEqual, env)
+    createProcedure("<", procIsLessThan, env)
+    createProcedure(">", procIsGreaterThan, env)
 
-  createProcedure("cons", procCons)
-  createProcedure("car", procCar)
-  createProcedure("cdr", procCdr)
-  createProcedure("set-car!", procSetCar)
-  createProcedure("set-cdr!", procSetCdr)
-  createProcedure("list", procList)
-  createProcedure("eq?", procIsEq)
+    createProcedure("cons", procCons, env)
+    createProcedure("car", procCar, env)
+    createProcedure("cdr", procCdr, env)
+    createProcedure("set-car!", procSetCar, env)
+    createProcedure("set-cdr!", procSetCdr, env)
+    createProcedure("list", procList, env)
+    createProcedure("eq?", procIsEq, env)
 
-  createProcedure("apply", procApply)
+    createProcedure("apply", procApply, env)
+
+    createProcedure("interaction-environment", procInteractionEnvironment, env)
+    createProcedure("null-environment", procNullEnvironment, env)
+    createProcedure("environment", procEnvironment, env)
+    createProcedure("eval", procEval, env)
+  }
+
+  def makeEnvironment(): Value = {
+    val env = setupEnvironment()
+    populateEnvironment(env)
+    env
+  }
+
+  val empty_env = Empty
+  val global_env = makeEnvironment()
+
+  def procInteractionEnvironment(arguments: Value) = global_env
+  def procNullEnvironment(arguments: Value) = setupEnvironment()
+  def procEnvironment(arguments: Value) = makeEnvironment()
 
 
   def eval(v: Value, env: Value): Value = {
@@ -811,6 +835,15 @@ object VM {
       var proc = eval(procApplicationOperator(v), env)
       var arguments = listOfValues(procApplicationOperands(v), env)
 
+      /* handle eval specially */
+      proc match {
+        case PrimitiveProc(fun) => if (fun == procEval) {
+          return eval(evalExpression(arguments), evalEnvironment(arguments))
+        }
+        case _ => ;
+      }
+
+      /* handle apply specially */
       proc match {
         case PrimitiveProc(fun) => if (fun == procApply) {
           proc = applyOperator(arguments)
@@ -896,7 +929,7 @@ object VM {
   }
 
   def repl(): Unit = {
-    println("Welcome to EDM v0.18. Use ctrl-c to exit.")
+    println("Welcome to EDM v0.19. Use ctrl-c to exit.")
     while (true) {
       print("edm> ")
       write(eval(read(new PushbackInputStream(System.in)), global_env))
