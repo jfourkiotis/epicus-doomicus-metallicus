@@ -2,6 +2,8 @@ import java.io._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
+case class EdmException(message: String) extends Exception(message)
+
 /**
   * Created by john on 15/12/15.
   */
@@ -89,21 +91,22 @@ object VM {
   def eatExpectedString(stream: PushbackReader, str: String): Unit = {
     for (c <- str) {
       if (c != stream.read()) {
-        throw new RuntimeException(s"unexpected character '$c'")
+        throw EdmException(s"unexpected character '$c'")
       }
     }
   }
 
   def peekExpectedDelimiter(stream: PushbackReader): Unit = {
-    if (!isDelimiter(peek(stream).toChar)) {
-      throw new RuntimeException("character not followed by delimiter")
+    val next = peek(stream)
+    if (!isDelimiter(next.toChar)) {
+      throw EdmException(s"character ${next.toChar} not followed by delimiter") // if next is EOF ?
     }
   }
 
   def readCharacter(stream: PushbackReader): CharacterLit = {
     val c = stream.read()
     if (c == -1) {
-      throw new RuntimeException("incomplete character literal")
+      throw EdmException("incomplete character literal")
     } else if (c == 's') {
       if (peek(stream) == 'p') {
         eatExpectedString(stream, "pace")
@@ -135,13 +138,13 @@ object VM {
     if (c == '.') { /* read the improper list */
       c = peek(stream)
       if (!isDelimiter(c.toChar)) {
-        throw new RuntimeException("dot (.) not followed be delimiter")
+        throw EdmException("dot (.) not followed be delimiter")
       }
       val second = read(stream)
       eatWhitespace(stream)
       c = stream.read()
       if (c != ')') {
-        throw new RuntimeException("where was the trailing paren?")
+        throw EdmException("where was the trailing paren?")
       }
       return Pair(first, second)
     } else { /* read list */
@@ -166,7 +169,7 @@ object VM {
       } else if (c == '\\') {
         readCharacter(stream)
       } else {
-        throw new RuntimeException(s"unknown boolean or character literal '${c.toChar}'")
+        throw EdmException(s"unknown boolean or character literal '${c.toChar}'")
       }
     } else if (Character.isDigit(c) || (c == '-' && Character.isDigit(peek(stream)))) {
       if (c == '-') {
@@ -185,7 +188,7 @@ object VM {
         stream.unread(c)
         new Fixnum(num)
       } else {
-        throw new RuntimeException("number not followed by delimiter")
+        throw EdmException("number not followed by delimiter")
       }
     } else if (isInitial(c.toChar) || ((c == '+' || c == '-') && isDelimiter(peek(stream).toChar))) {
       val buffer = ArrayBuffer[Char]()
@@ -197,7 +200,7 @@ object VM {
         if (c != -1) stream.unread(c)
         Symbol.mkLiteral(buffer.mkString)
       } else {
-        throw new RuntimeException(s"symbol not followed by delimiter. found '${c.toChar}'")
+        throw EdmException(s"symbol not followed by delimiter. found '${c.toChar}'")
       }
     } else if (c == '"') {
       val literal = ArrayBuffer[Char]()
@@ -211,7 +214,7 @@ object VM {
           }
         }
         if (c == -1) {
-          throw new RuntimeException("non-terminated string literal")
+          throw EdmException("non-terminated string literal")
         }
         literal.append(c.toChar)
       }
@@ -223,7 +226,7 @@ object VM {
     } else if (c == -1) {
       null
     } else {
-      throw new RuntimeException(s"bad input. unexpected '${c.toChar}'")
+      throw EdmException(s"bad input. unexpected '${c.toChar}'")
     }
   }
 
@@ -344,7 +347,8 @@ object VM {
       }
       current_env = enclosingEnvironment(current_env)
     }
-    throw new RuntimeException("unbound variable")
+    val s = variable match {case Symbol(name) => name}
+    throw EdmException(s"unbound variable $s")
   }
 
   def defineVariable(variable: Value, value: Value, env: Value): Unit = {
@@ -381,7 +385,8 @@ object VM {
       }
       current_env = enclosingEnvironment(env)
     }
-    throw new RuntimeException("unbound variable")
+    val s = variable match {case Symbol(name) => name}
+    throw EdmException(s"unbound variable $s")
   }
 
   def isAssignment(form: Value) = isTagged(form, SET)
@@ -471,7 +476,7 @@ object VM {
       val first = car(clauses)
       val rest  = cdr(clauses)
       if (isCondElseClause(first)) {
-        if (rest == Empty) sequenceToExp(condActions(first)) else throw new RuntimeException("else clause isn't last")
+        if (rest == Empty) sequenceToExp(condActions(first)) else throw EdmException("else clause isn't last")
       } else {
         makeIf(condPredicate(first), sequenceToExp(condActions(first)), expandClauses(rest))
       }
@@ -538,7 +543,7 @@ object VM {
 
   def fixnumToInt(v: Value) = v match {
     case Fixnum(n) => n
-    case _ => throw new RuntimeException("value not integer")
+    case _ => throw EdmException("value not integer")
   }
 
   def procQuotient(arguments: Value) = {
@@ -633,32 +638,32 @@ object VM {
 
   def procCharToInteger(arguments: Value) = car(arguments) match {
     case CharacterLit(c) => Fixnum(c.toInt)
-    case _ => throw new RuntimeException("invalid argument type (expected character)")
+    case _ => throw EdmException("invalid argument type (expected character)")
   }
 
   def procIntegerToChar(arguments: Value) = car(arguments) match {
     case Fixnum(n) => CharacterLit.mkLiteral(n.toChar)
-    case _ => throw new RuntimeException("invalid argument type (expected integer)")
+    case _ => throw EdmException("invalid argument type (expected integer)")
   }
 
   def procNumberToString(arguments: Value) = car(arguments) match {
     case Fixnum(n) => StringLit.mkLiteral(n.toString)
-    case _ => throw new RuntimeException("invalid argument type (expected integer)")
+    case _ => throw EdmException("invalid argument type (expected integer)")
   }
 
   def procStringToNumber(arguments: Value) = car(arguments) match {
     case StringLit(s) => Fixnum(s.toInt)
-    case _ => throw new RuntimeException("invalid argument type (expected string)")
+    case _ => throw EdmException("invalid argument type (expected string)")
   }
 
   def procSymbolToString(arguments: Value) = car(arguments) match {
     case Symbol(s) => StringLit.mkLiteral(s)
-    case _ => throw new RuntimeException("invalid argument type (expected symbol)")
+    case _ => throw EdmException("invalid argument type (expected symbol)")
   }
 
   def procStringToSymbol(arguments: Value) = car(arguments) match {
     case StringLit(s) => Symbol.mkLiteral(s)
-    case _ => throw new RuntimeException("invalid argument type (expected string)")
+    case _ => throw EdmException("invalid argument type (expected string)")
   }
 
   def isProcApplication(form: Value) = isPair(form)
@@ -707,7 +712,7 @@ object VM {
     defineVariable(Symbol.mkLiteral(name), PrimitiveProc(fun), env)
   }
 
-  val procApply: Value => Value = v => throw new RuntimeException("illegal state: the body of `apply` should not execute")
+  val procApply: Value => Value = v => throw EdmException("illegal state: the body of `apply` should not execute")
 
   def applyOperator(arguments: Value) = car(arguments)
 
@@ -719,7 +724,7 @@ object VM {
 
   def applyOperands(arguments: Value) = prepareApplyOperands(cdr(arguments))
 
-  val procEval: Value => Value = v => throw new RuntimeException("illegal state: the body of `eval` should not execute")
+  val procEval: Value => Value = v => throw EdmException("illegal state: the body of `eval` should not execute")
   def evalExpression(arguments: Value) = car(arguments)
   def evalEnvironment(arguments: Value) = cadr(arguments)
 
@@ -740,12 +745,12 @@ object VM {
     case StringLit(s) =>
       val in = new PushbackReader(new BufferedReader(new FileReader(s)))
       InputPort(in)
-    case _ => throw new RuntimeException("invalid arguments")
+    case _ => throw EdmException("invalid arguments")
   }
 
   def procCloseInputPort(arguments: Value) = car(arguments) match {
     case InputPort(p) => p.close(); OK
-    case _ => throw new RuntimeException("invalid arguments")
+    case _ => throw EdmException("invalid arguments")
   }
 
   def procIsInputPort(arguments: Value) = car(arguments) match {
@@ -758,7 +763,7 @@ object VM {
       new PushbackReader(new InputStreamReader(System.in))
     } else car(arguments) match {
       case InputPort(stream) => stream
-      case _ => throw new RuntimeException("invalid argument")
+      case _ => throw EdmException("invalid argument")
     }
     val result = read(in)
     if (result == null) Eof else result
@@ -769,7 +774,7 @@ object VM {
       new PushbackReader(new InputStreamReader(System.in))
     } else car(arguments) match {
       case InputPort(stream) => stream
-      case _ => throw new RuntimeException("invalid argument")
+      case _ => throw EdmException("invalid argument")
     }
     val result = in.read()
     if (result == -1) Eof else CharacterLit.mkLiteral(result.toChar)
@@ -785,7 +790,7 @@ object VM {
       System.out
     } else car(args) match {
       case OutputPort(stream) => stream
-      case _ => throw new RuntimeException("invalid argument")
+      case _ => throw EdmException("invalid argument")
     }
     out.write(character.asInstanceOf[CharacterLit].v)
     out.flush()
@@ -798,9 +803,9 @@ object VM {
       System.out
     } else cdr(arguments) match {
       case OutputPort(stream) => stream
-      case _ => throw new RuntimeException("invalid argument")
+      case _ => throw EdmException("invalid argument")
     }
-    write(out, car(arguments))
+    write(out, exp)
     out.flush()
     OK
   }
@@ -809,12 +814,12 @@ object VM {
     case StringLit(s) =>
       val out = new PrintStream(s)
       OutputPort(out)
-    case _ => throw new RuntimeException("invalid arguments")
+    case _ => throw EdmException("invalid arguments")
   }
 
   def procCloseOutputPort(arguments: Value) = car(arguments) match {
     case OutputPort(p) => p.close(); OK
-    case _ => throw new RuntimeException("invalid arguments")
+    case _ => throw EdmException("invalid arguments")
   }
 
   def procIsOutputPort(arguments: Value) = car(arguments) match {
@@ -1002,10 +1007,10 @@ object VM {
           }
           new_exp = firstExpression(new_exp)
           eval(new_exp, new_env)
-        case _ => throw new RuntimeException("Invalid procedure object")
+        case _ => throw EdmException("Invalid procedure object")
       }
     } else {
-      throw new RuntimeException("cannot eval unknown expression type")
+      throw EdmException("cannot eval unknown expression type")
     }
   }
 
@@ -1066,17 +1071,17 @@ object VM {
     case InputPort(_) => out.print("#input-port")
     case OutputPort(_) => out.print("#output-port")
     case Eof => out.print("#eof")
-    case _ => throw new RuntimeException("Cannot write unknown type")
+    case _ => throw EdmException("Cannot write unknown type")
   }
 
   def repl(args: Array[String]): Unit = {
-    System.out.println("Welcome to EDM v0.21. Use ctrl-c to exit.")
+    System.out.println("Welcome to EDM v0.22. Use ctrl-c to exit.")
 
     /* load all files given as arguments */
     for (arg <- args) {
       val result = procLoad(Pair(StringLit.mkLiteral(arg), Empty))
       if (result == null) {
-        throw new RuntimeException("error while loading $arg")
+        throw EdmException("error while loading $arg")
       } else {
         write(System.out, result)
         System.out.println()
@@ -1084,14 +1089,19 @@ object VM {
     }
 
     while (true ) {
-      System.out.print("edm> ")
-      val v = read(new PushbackReader(new InputStreamReader(System.in)))
-      if (v == null) {
-        System.out.println("Goodbye")
-        return
-      } else {
-        write(System.out, eval(v, global_env))
-        System.out.println()
+      try {
+        System.out.print("edm> ")
+        val v = read(new PushbackReader(new InputStreamReader(System.in)))
+        if (v == null) {
+          System.out.println("Goodbye")
+          return
+        } else {
+          write(System.out, eval(v, global_env))
+          System.out.println()
+        }
+      } catch {
+        case EdmException(m) => println(m)
+        case other: Throwable => throw other
       }
     }
   }
