@@ -810,6 +810,20 @@ object VM {
     OK
   }
 
+  def displayProc(arguments: Value) = {
+    val v = car(arguments)
+    val out = if (cdr(arguments) == Empty) {
+      System.out
+    } else cdr(arguments) match {
+      case OutputPort(stream) => stream
+      case _ => throw EdmException("invalid argument")
+    }
+
+    displayValue(v, out)
+    out.flush()
+    OK
+  }
+
   def procOpenOutputPort(arguments: Value) = car(arguments) match {
     case StringLit(s) =>
       val out = new PrintStream(s)
@@ -895,6 +909,7 @@ object VM {
     createProcedure("peek-char", procPeekChar, env)
     createProcedure("write-char", procWriteChar, env)
     createProcedure("write", procWrite, env)
+    createProcedure("display", displayProc, env)
 
     createProcedure("open-output-port", procOpenOutputPort, env)
     createProcedure("close-output-port", procCloseOutputPort, env)
@@ -1039,6 +1054,29 @@ object VM {
       }
     }
     print("\"")
+  }
+
+  def displayPair(v: Value, out: PrintStream): Unit = {
+    displayValue(car(v), out)
+    if (isPair(cdr(v))) {
+      out.print(' ')
+      displayPair(cdr(v), out)
+    } else if (cdr(v) != Empty) {
+      out.print(" . ")
+      displayValue(cdr(v), out)
+    }
+  }
+
+  def displayValue(v: Value, out: PrintStream): Unit = v match {
+    case Fixnum(v) => out.print(v)
+    case True => out.print("#t")
+    case False => out.print("#f")
+    case Empty => out.print("()")
+    case CharacterLit(v) => out.print(v)
+    case StringLit(v) => out.print(v)
+    case Symbol(v) => out.print(v)
+    case Pair(first, second) => out.print('('); displayPair(v, out); out.print(')')
+    case _ => out.print("`display` primitive is not implemented for this object")
   }
 
   def writePair(out: PrintStream, first: Value, second: Value): Unit = {
