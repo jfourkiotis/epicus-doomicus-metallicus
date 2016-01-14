@@ -455,7 +455,7 @@ object VM {
   def beginActions(v: Value) = cdr(v)
 
   def isCond(v: Value) = isTagged(v, COND)
-  def isCondElseClause(v: Value) = v == ELSE
+  def isCondElseClause(v: Value) = car(v) == ELSE
   def condClauses(cond: Value) = cdr(cond)
   def condPredicate(clause: Value) = car(clause)
   def condActions(clause: Value) = cdr(clause)
